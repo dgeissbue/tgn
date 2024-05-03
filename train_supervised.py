@@ -171,8 +171,10 @@ for i in range(args.n_runs):
   decoder = decoder.to(device)
   decoder_loss_criterion = torch.nn.BCELoss()
 
-  val_aucs = []
-  train_losses = []
+  val_aucs = [] # Area under the ROC curve
+  val_aprs = [] # Average precision recall
+  train_losses = [] # Training loss
+  val_losses = [] # Validation loss
 
   early_stopper = EarlyStopMonitor(max_round=args.patience)
   for epoch in range(args.n_epoch):
@@ -215,25 +217,29 @@ for i in range(args.n_runs):
       loss += decoder_loss.item()
     train_losses.append(loss / num_batch)
 
-    val_auc = eval_node_classification(tgn, decoder, val_data, full_data.edge_idxs, BATCH_SIZE,
-                                       n_neighbors=NUM_NEIGHBORS)
+    val_auc, val_apr, val_loss = eval_node_classification(tgn, decoder, val_data, full_data.edge_idxs, BATCH_SIZE,
+                                       n_neighbors=NUM_NEIGHBORS, decoder_loss_criterion=decoder_loss_criterion)
     val_aucs.append(val_auc)
+    val_aprs.append(val_apr)
+    val_losses.append(val_loss)
 
     pickle.dump({
-      "val_aps": val_aucs,
+      "val_aucs": val_aucs,
+      "val_aprs": val_aprs,
       "train_losses": train_losses,
+      "val_losses": val_losses,
       "epoch_times": [0.0],
       "new_nodes_val_aps": [],
     }, open(results_path, "wb"))
 
-    logger.info(f'Epoch {epoch}: train loss: {loss / num_batch}, val auc: {val_auc}, time: {time.time() - start_epoch}')
+    logger.info(f'Epoch {epoch}: train loss: {loss / num_batch}, val loss : {val_loss}, val auc: {val_auc}, val apr: {val_apr}, time: {time.time() - start_epoch}')
   
-  if args.use_validation:
-    if early_stopper.early_stop_check(val_auc):
-      logger.info('No improvement over {} epochs, stop training'.format(early_stopper.max_round))
-      break
-    else:
-      torch.save(decoder.state_dict(), get_checkpoint_path(epoch))
+    if args.use_validation:
+      if early_stopper.early_stop_check(val_apr):
+        logger.info('No improvement over {} epochs, stop training'.format(early_stopper.max_round))
+        break
+      else:
+        torch.save(decoder.state_dict(), get_checkpoint_path(epoch))
 
   if args.use_validation:
     logger.info(f'Loading the best model at epoch {early_stopper.best_epoch}')
@@ -242,20 +248,27 @@ for i in range(args.n_runs):
     logger.info(f'Loaded the best model at epoch {early_stopper.best_epoch} for inference')
     decoder.eval()
 
-    test_auc = eval_node_classification(tgn, decoder, test_data, full_data.edge_idxs, BATCH_SIZE,
-                                        n_neighbors=NUM_NEIGHBORS)
+    test_auc, test_apr, test_loss = eval_node_classification(tgn, decoder, test_data, full_data.edge_idxs, BATCH_SIZE,
+                                        n_neighbors=NUM_NEIGHBORS, decoder_loss_criterion=decoder_loss_criterion)
   else:
     # If we are not using a validation set, the test performance is just the performance computed
     # in the last epoch
     test_auc = val_aucs[-1]
+    test_apr = val_aprs[-1]
+    test_loss = val_losses[-1]
     
   pickle.dump({
-    "val_aps": val_aucs,
-    "test_ap": test_auc,
+    "val_aucs": val_aucs,
+    "val_aprs": val_aprs,
+    "test_auc": test_auc,
+    "test_apr": test_apr,
     "train_losses": train_losses,
-    "epoch_times": [0.0],
-    "new_nodes_val_aps": [],
-    "new_node_test_ap": 0,
+    "val_losses": val_losses,
+    "test_loss": test_loss,
+    "best_epoch": early_stopper.best_epoch,
+    # "epoch_times": [0.0],
+    # "new_nodes_val_aps": [],
+    # "new_node_test_ap": 0,
   }, open(results_path, "wb"))
 
-  logger.info(f'test auc: {test_auc}')
+  logger.info(f'test auc: {test_auc}, test apr: {test_apr}')

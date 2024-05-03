@@ -176,6 +176,8 @@ for i in range(args.n_runs):
   epoch_times = []
   total_epoch_times = []
   train_losses = []
+  val_losses = []
+  new_nodes_val_losses = []
 
   early_stopper = EarlyStopMonitor(max_round=args.patience)
   for epoch in range(NUM_EPOCH):
@@ -245,10 +247,11 @@ for i in range(args.n_runs):
       # validation on unseen nodes
       train_memory_backup = tgn.memory.backup_memory()
 
-    val_ap, val_auc = eval_edge_prediction(model=tgn,
-                                                            negative_edge_sampler=val_rand_sampler,
-                                                            data=val_data,
-                                                            n_neighbors=NUM_NEIGHBORS)
+    val_ap, val_auc, val_loss = eval_edge_prediction(model=tgn,
+                                                     negative_edge_sampler=val_rand_sampler,
+                                                     data=val_data,
+                                                     n_neighbors=NUM_NEIGHBORS,
+                                                     criterion=criterion)
     if USE_MEMORY:
       val_memory_backup = tgn.memory.backup_memory()
       # Restore memory we had at the end of training to be used when validating on new nodes.
@@ -257,10 +260,11 @@ for i in range(args.n_runs):
       tgn.memory.restore_memory(train_memory_backup)
 
     # Validate on unseen nodes
-    nn_val_ap, nn_val_auc = eval_edge_prediction(model=tgn,
-                                                                        negative_edge_sampler=val_rand_sampler,
-                                                                        data=new_node_val_data,
-                                                                        n_neighbors=NUM_NEIGHBORS)
+    nn_val_ap, nn_val_auc, nn_val_loss = eval_edge_prediction(model=tgn,
+                                                              negative_edge_sampler=val_rand_sampler,
+                                                              data=new_node_val_data,
+                                                              n_neighbors=NUM_NEIGHBORS,
+                                                              criterion=criterion)
 
     if USE_MEMORY:
       # Restore memory we had at the end of validation
@@ -269,12 +273,17 @@ for i in range(args.n_runs):
     new_nodes_val_aps.append(nn_val_ap)
     val_aps.append(val_ap)
     train_losses.append(np.mean(m_loss))
+    val_losses.append(val_loss)
+    new_nodes_val_losses.append(nn_val_loss)
 
     # Save temporary results to disk
     pickle.dump({
       "val_aps": val_aps,
       "new_nodes_val_aps": new_nodes_val_aps,
       "train_losses": train_losses,
+      "val_losses": val_losses,
+      "new_nodes_val_losses": new_nodes_val_losses,
+      "best_epoch": early_stopper.best_epoch,
       "epoch_times": epoch_times,
       "total_epoch_times": total_epoch_times
     }, open(results_path, "wb"))
@@ -283,11 +292,9 @@ for i in range(args.n_runs):
     total_epoch_times.append(total_epoch_time)
 
     logger.info('epoch: {} took {:.2f}s'.format(epoch, total_epoch_time))
-    logger.info('Epoch mean loss: {}'.format(np.mean(m_loss)))
-    logger.info(
-      'val auc: {}, new node val auc: {}'.format(val_auc, nn_val_auc))
-    logger.info(
-      'val ap: {}, new node val ap: {}'.format(val_ap, nn_val_ap))
+    logger.info('Epoch mean loss: {}, mean val loss {}, mean nn_val_loss {}'.format(np.mean(m_loss), val_loss, nn_val_loss))
+    logger.info('val auc: {}, new node val auc: {}'.format(val_auc, nn_val_auc))
+    logger.info('val ap: {}, new node val ap: {}'.format(val_ap, nn_val_ap))
 
     # Early stopping
     if early_stopper.early_stop_check(val_ap):
@@ -309,19 +316,21 @@ for i in range(args.n_runs):
 
   ### Test
   tgn.embedding_module.neighbor_finder = full_ngh_finder
-  test_ap, test_auc = eval_edge_prediction(model=tgn,
-                                                              negative_edge_sampler=test_rand_sampler,
-                                                              data=test_data,
-                                                              n_neighbors=NUM_NEIGHBORS)
+  test_ap, test_auc, test_loss = eval_edge_prediction(model=tgn,
+                                                      negative_edge_sampler=test_rand_sampler,
+                                                      data=test_data,
+                                                      n_neighbors=NUM_NEIGHBORS,
+                                                      criterion=criterion)
 
   if USE_MEMORY:
     tgn.memory.restore_memory(val_memory_backup)
 
   # Test on unseen nodes
-  nn_test_ap, nn_test_auc = eval_edge_prediction(model=tgn,
-                                                                          negative_edge_sampler=nn_test_rand_sampler,
-                                                                          data=new_node_test_data,
-                                                                          n_neighbors=NUM_NEIGHBORS)
+  nn_test_ap, nn_test_auc, nn_test_loss = eval_edge_prediction(model=tgn,
+                                                               negative_edge_sampler=nn_test_rand_sampler,
+                                                               data=new_node_test_data,
+                                                               n_neighbors=NUM_NEIGHBORS,
+                                                               criterion=criterion)
 
   logger.info(
     'Test statistics: Old nodes -- auc: {}, ap: {}'.format(test_auc, test_ap))
@@ -331,10 +340,11 @@ for i in range(args.n_runs):
   pickle.dump({
     "val_aps": val_aps,
     "new_nodes_val_aps": new_nodes_val_aps,
-    "test_ap": test_ap,
-    "new_node_test_ap": nn_test_ap,
-    "epoch_times": epoch_times,
     "train_losses": train_losses,
+    "val_losses": val_losses,
+    "new_nodes_val_losses": new_nodes_val_losses,
+    "best_epoch": early_stopper.best_epoch,
+    "epoch_times": epoch_times,
     "total_epoch_times": total_epoch_times
   }, open(results_path, "wb"))
 

@@ -130,6 +130,12 @@ device = torch.device(device_string)
 mean_time_shift_src, std_time_shift_src, mean_time_shift_dst, std_time_shift_dst = \
   compute_time_statistics(full_data.sources, full_data.destinations, full_data.timestamps)
 
+# Consider only edges with a node (edge_feature[0] == 1)
+# samples_edges = lambda x , edge_idxs_batch : x[np.where(edge_features[edge_idxs_batch][:, 0] == 1)[0]]
+samples_edges = None
+if samples_edges is not None :
+  logger.info(f'Only consider edges with a sample node ({len(samples_edges(full_data.edge_idxs, full_data.edge_idxs))/len(full_data.edge_idxs):.2f}% of the ({len(full_data.edge_idxs)}) edges)') 
+
 for i in range(args.n_runs):
   results_path = "results/{}_node_classification_{}.pkl".format(args.prefix,
                                                                 i) if i > 0 else "results/{}_node_classification.pkl".format(
@@ -209,6 +215,10 @@ for i in range(args.n_runs):
                                                                                      edge_idxs_batch,
                                                                                      NUM_NEIGHBORS)
 
+      if samples_edges is not None :
+        labels_batch = samples_edges(labels_batch, edge_idxs_batch)
+        source_embedding = samples_edges(source_embedding, edge_idxs_batch)
+
       labels_batch_torch = torch.from_numpy(labels_batch).float().to(device)
       pred = decoder(source_embedding).sigmoid()
       decoder_loss = decoder_loss_criterion(pred, labels_batch_torch)
@@ -218,7 +228,8 @@ for i in range(args.n_runs):
     train_losses.append(loss / num_batch)
 
     val_auc, val_apr, val_loss = eval_node_classification(tgn, decoder, val_data, full_data.edge_idxs, BATCH_SIZE,
-                                       n_neighbors=NUM_NEIGHBORS, decoder_loss_criterion=decoder_loss_criterion)
+                                       n_neighbors=NUM_NEIGHBORS, decoder_loss_criterion=decoder_loss_criterion,
+                                       samples_edges=samples_edges)
     val_aucs.append(val_auc)
     val_aprs.append(val_apr)
     val_losses.append(val_loss)
@@ -249,7 +260,8 @@ for i in range(args.n_runs):
     decoder.eval()
 
     test_auc, test_apr, test_loss = eval_node_classification(tgn, decoder, test_data, full_data.edge_idxs, BATCH_SIZE,
-                                        n_neighbors=NUM_NEIGHBORS, decoder_loss_criterion=decoder_loss_criterion)
+                                        n_neighbors=NUM_NEIGHBORS, decoder_loss_criterion=decoder_loss_criterion,
+                                        samples_edges=samples_edges)
   else:
     # If we are not using a validation set, the test performance is just the performance computed
     # in the last epoch

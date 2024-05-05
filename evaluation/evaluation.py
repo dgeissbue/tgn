@@ -46,13 +46,14 @@ def eval_edge_prediction(model, negative_edge_sampler, data, n_neighbors, batch_
       if criterion is not None:
         pos_label = torch.ones(size, dtype=torch.float)
         neg_label = torch.zeros(size, dtype=torch.float)
-        losses.append(criterion(pos_prob.squeeze(), pos_label).item() + criterion(neg_prob.squeeze(), neg_label).item())
+        losses.append(criterion(pos_prob.squeeze().cpu(), pos_label.cpu()).item() + criterion(neg_prob.squeeze().cpu(), neg_label.cpu()).item())
 
   return np.mean(val_ap), np.mean(val_auc), np.mean(losses) if criterion is not None else None
 
 
-def eval_node_classification(tgn, decoder, data, edge_idxs, batch_size, n_neighbors, decoder_loss_criterion=None):
-  pred_prob = np.zeros(len(data.sources))
+def eval_node_classification(tgn, decoder, data, edge_idxs, batch_size, n_neighbors, decoder_loss_criterion=None, samples_edges=None):
+  pred_prob = []
+  labels = []
   num_instance = len(data.sources)
   num_batch = math.ceil(num_instance / batch_size)
 
@@ -68,6 +69,7 @@ def eval_node_classification(tgn, decoder, data, edge_idxs, batch_size, n_neighb
       destinations_batch = data.destinations[s_idx: e_idx]
       timestamps_batch = data.timestamps[s_idx:e_idx]
       edge_idxs_batch = edge_idxs[s_idx: e_idx]
+      labels_batch = data.labels[s_idx: e_idx]
 
       source_embedding, destination_embedding, _ = tgn.compute_temporal_embeddings(sources_batch,
                                                                                    destinations_batch,
@@ -75,19 +77,27 @@ def eval_node_classification(tgn, decoder, data, edge_idxs, batch_size, n_neighb
                                                                                    timestamps_batch,
                                                                                    edge_idxs_batch,
                                                                                    n_neighbors)
+      if samples_edges is not None:
+        source_embedding = samples_edges(source_embedding, edge_idxs_batch)
+        labels_batch = samples_edges(labels_batch, edge_idxs_batch)
+
       pred_prob_batch = decoder(source_embedding).sigmoid()
-      pred_prob[s_idx: e_idx] = pred_prob_batch.cpu().numpy()
+      pred_prob.append(pred_prob_batch.cpu().numpy())
+      labels.append(labels_batch)
 
       if decoder_loss_criterion is not None:
-        labels_batch_torch = torch.from_numpy(data.labels[s_idx: e_idx]).float()
-        loss += decoder_loss_criterion(pred_prob_batch, labels_batch_torch).item()
+        labels_batch_torch = torch.from_numpy(labels_batch).float()
+        loss += decoder_loss_criterion(pred_prob_batch.cpu(), labels_batch_torch.cpu()).item()
 
   if decoder_loss_criterion is not None:
     loss /= num_batch
   else:
     loss = None
 
-  auc_roc = roc_auc_score(data.labels, pred_prob)
-  apr = average_precision_score(data.labels, pred_prob)
+  pred_prob = np.concatenate(pred_prob)
+  labels = np.concatenate(labels)
+
+  auc_roc = roc_auc_score(labels, pred_prob)
+  apr = average_precision_score(labels, pred_prob)
 
   return auc_roc, apr, loss

@@ -49,7 +49,7 @@ def get_data_node_classification(dataset_name, use_validation=False):
   return full_data, node_features, edge_features, train_data, val_data, test_data
 
 
-def get_data(dataset_name, different_new_nodes_between_val_and_test=False, randomize_features=False):
+def get_data(dataset_name, different_new_nodes_between_val_and_test=False, randomize_features=False, verbose=True):
   ### Load data and train val test split
   graph_df = pd.read_csv('./data/ml_{}.csv'.format(dataset_name))
   edge_features = np.load('./data/ml_{}.npy'.format(dataset_name))
@@ -138,20 +138,21 @@ def get_data(dataset_name, different_new_nodes_between_val_and_test=False, rando
                             timestamps[new_node_test_mask], edge_idxs[new_node_test_mask],
                             labels[new_node_test_mask])
 
-  print("The dataset has {} interactions, involving {} different nodes".format(full_data.n_interactions,
-                                                                      full_data.n_unique_nodes))
-  print("The training dataset has {} interactions, involving {} different nodes".format(
-    train_data.n_interactions, train_data.n_unique_nodes))
-  print("The validation dataset has {} interactions, involving {} different nodes".format(
-    val_data.n_interactions, val_data.n_unique_nodes))
-  print("The test dataset has {} interactions, involving {} different nodes".format(
-    test_data.n_interactions, test_data.n_unique_nodes))
-  print("The new node validation dataset has {} interactions, involving {} different nodes".format(
-    new_node_val_data.n_interactions, new_node_val_data.n_unique_nodes))
-  print("The new node test dataset has {} interactions, involving {} different nodes".format(
-    new_node_test_data.n_interactions, new_node_test_data.n_unique_nodes))
-  print("{} nodes were used for the inductive testing, i.e. are never seen during training".format(
-    len(new_test_node_set)))
+  if verbose:
+    print("The dataset has {} interactions, involving {} different nodes".format(full_data.n_interactions,
+                                                                        full_data.n_unique_nodes))
+    print("The training dataset has {} interactions, involving {} different nodes".format(
+      train_data.n_interactions, train_data.n_unique_nodes))
+    print("The validation dataset has {} interactions, involving {} different nodes".format(
+      val_data.n_interactions, val_data.n_unique_nodes))
+    print("The test dataset has {} interactions, involving {} different nodes".format(
+      test_data.n_interactions, test_data.n_unique_nodes))
+    print("The new node validation dataset has {} interactions, involving {} different nodes".format(
+      new_node_val_data.n_interactions, new_node_val_data.n_unique_nodes))
+    print("The new node test dataset has {} interactions, involving {} different nodes".format(
+      new_node_test_data.n_interactions, new_node_test_data.n_unique_nodes))
+    print("{} nodes were used for the inductive testing, i.e. are never seen during training".format(
+      len(new_test_node_set)))
 
   return node_features, edge_features, full_data, train_data, val_data, test_data, \
          new_node_val_data, new_node_test_data

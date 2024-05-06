@@ -131,7 +131,7 @@ mean_time_shift_src, std_time_shift_src, mean_time_shift_dst, std_time_shift_dst
   compute_time_statistics(full_data.sources, full_data.destinations, full_data.timestamps)
 
 # Consider only edges with a node (edge_feature[0] == 1)
-# samples_edges = lambda x , edge_idxs_batch : x[np.where(edge_features[edge_idxs_batch][:, 0] == 1)[0]]
+# samples_edges = lambda x , edge_idxs_batch : x[torch.where(edge_features[edge_idxs_batch][:, 0] == 1)[0]]
 samples_edges = None
 if samples_edges is not None :
   logger.info(f'Only consider edges with a sample node ({len(samples_edges(full_data.edge_idxs, full_data.edge_idxs))/len(full_data.edge_idxs):.2f}% of the ({len(full_data.edge_idxs)}) edges)') 
